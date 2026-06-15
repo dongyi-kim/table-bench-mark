@@ -1,0 +1,27 @@
+# Benchmark artifacts
+/staging/*
+!/staging/.gitkeep
+/results/*
+!/results/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+
+# Docker / data volumes
+/.data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local Claude Code settings
+.claude/settings.local.json

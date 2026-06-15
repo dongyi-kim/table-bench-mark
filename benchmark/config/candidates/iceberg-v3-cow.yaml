@@ -1,0 +1,13 @@
+name: iceberg-v3-cow
+adapter: iceberg_spark
+write_engine: spark
+table_format: iceberg
+mode: cow
+catalog: polaris
+iceberg_format_version: 3
+table_properties:
+  write.delete.mode: copy-on-write
+  write.update.mode: copy-on-write
+  write.merge.mode: copy-on-write
+capabilities:
+  upsert: true

@@ -1,0 +1,264 @@
+# table-bench-mark stack.
+# Bring up with: scripts/run.sh up   (wraps `docker compose up -d --build` + health waits)
+#
+# Service map:
+#   minio / minio-init  -> S3 warehouse + bucket bootstrap
+#   postgres            -> Polaris metadata persistence
+#   polaris             -> Iceberg REST catalog (Quarkus app, postgres-backed)
+#   polaris-bootstrap   -> one-shot: create catalog + principal + roles + grants on MinIO warehouse
+#   starrocks           -> allin1 (FE+BE); query engine for all, writer for Session A
+#   flink-jobmanager / flink-taskmanager / flink-sql-gateway -> uniform writer for Session B
+#   bench-runner        -> Python orchestrator (datagen, runner, report)
+#
+# NOTE: Polaris/Flink config is version-sensitive. Versions are pinned in .env; if a service
+# fails to start, check the connector/version matrix in CLAUDE.md first.
+#
+# Project name is set via COMPOSE_PROJECT_NAME in .env (top-level `name:` needs newer Compose).
+
+x-s3-env: &s3-env
+  AWS_REGION: ${MINIO_REGION:-us-east-1}
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-admin}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-password123}
+  AWS_ENDPOINT_URL: ${MINIO_ENDPOINT:-http://minio:9000}
+  AWS_ENDPOINT_URL_S3: ${MINIO_ENDPOINT:-http://minio:9000}
+
+services:
+  # ────────────────────────────── MinIO (S3 warehouse) ──────────────────────
+  minio:
+    image: minio/minio:${MINIO_VERSION:-RELEASE.2025-04-08T15-41-24Z}
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [bench]
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/init/create-bucket.sh"]
+    environment:
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+      WAREHOUSE_BUCKET: ${WAREHOUSE_BUCKET:-warehouse}
+    volumes:
+      - ./infra/minio:/init:ro
+    networks: [bench]
+
+  # ────────────────────────────── Postgres (Polaris metadata) ───────────────
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-16}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-polaris}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-polaris}
+      POSTGRES_DB: ${POSTGRES_DB:-polaris}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-polaris} -d ${POSTGRES_DB:-polaris}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [bench]
+
+  # Polaris 1.x with relational-jdbc persistence requires a one-time schema + root
+  # credential bootstrap BEFORE the server can serve. Tolerant on re-run (already done).
+  polaris-admin-bootstrap:
+    image: apache/polaris-admin-tool:${POLARIS_VERSION:-1.5.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      QUARKUS_DATASOURCE_DB_KIND: postgresql
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-polaris}
+      QUARKUS_DATASOURCE_USERNAME: ${POSTGRES_USER:-polaris}
+      QUARKUS_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-polaris}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "java -jar /deployments/polaris-admin-tool.jar bootstrap -r POLARIS -c POLARIS,${POLARIS_CLIENT_ID:-root},${POLARIS_CLIENT_SECRET:-s3cr3t} || echo '[admin-bootstrap] already bootstrapped or non-fatal; continuing'"
+    networks: [bench]
+
+  # ────────────────────────────── Polaris (Iceberg REST catalog) ────────────
+  polaris:
+    image: apache/polaris:${POLARIS_VERSION:-1.5.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      polaris-admin-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      <<: *s3-env
+      # Postgres-backed persistence (Quarkus datasource).
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      QUARKUS_DATASOURCE_DB_KIND: postgresql
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-polaris}
+      QUARKUS_DATASOURCE_USERNAME: ${POSTGRES_USER:-polaris}
+      QUARKUS_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-polaris}
+      # Bootstrap root realm credentials: <realm>,<clientId>,<clientSecret>
+      POLARIS_BOOTSTRAP_CREDENTIALS: POLARIS,${POLARIS_CLIENT_ID:-root},${POLARIS_CLIENT_SECRET:-s3cr3t}
+      POLARIS_REALM_CONTEXT_REALMS: POLARIS
+      # Allow insecure (http) for local; do NOT use in production.
+      POLARIS_FEATURES_ENABLE_INSECURE: "true"
+      # Extend OAuth token lifetime (default ~PT1H caused mid-run expiry on long benches).
+      POLARIS_AUTHENTICATION_TOKEN_BROKER_MAX_TOKEN_GENERATION: PT24H
+    ports:
+      - "8181:8181"   # catalog + management API
+      - "8182:8182"   # health/metrics
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8182/q/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [bench]
+
+  polaris-bootstrap:
+    image: curlimages/curl:8.11.1
+    depends_on:
+      polaris:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap.sh"]
+    environment:
+      POLARIS_URI: http://polaris:8181
+      POLARIS_CLIENT_ID: ${POLARIS_CLIENT_ID:-root}
+      POLARIS_CLIENT_SECRET: ${POLARIS_CLIENT_SECRET:-s3cr3t}
+      POLARIS_CATALOG_NAME: ${POLARIS_CATALOG_NAME:-polaris_catalog}
+      WAREHOUSE_BUCKET: ${WAREHOUSE_BUCKET:-warehouse}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+    volumes:
+      - ./infra/polaris:/bootstrap:ro
+    networks: [bench]
+
+  # ────────────────────────────── StarRocks (query engine / Session A writer) ─
+  starrocks:
+    image: starrocks/allin1-ubuntu:${STARROCKS_VERSION:-3.5.5}
+    depends_on:
+      polaris-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      <<: *s3-env
+    ports:
+      - "9030:9030"   # MySQL protocol (FE query port)
+      - "8030:8030"   # FE HTTP
+      - "8040:8040"   # BE HTTP
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h127.0.0.1 -P9030 -uroot -e 'SHOW FRONTENDS' >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+    volumes:
+      - starrocks-data:/data/deploy
+    networks: [bench]
+
+  # ────────────────────────────── Spark (Iceberg writer) ─────────────────────
+  spark:
+    build:
+      context: ./infra/spark
+      args:
+        SPARK_VERSION: ${SPARK_VERSION:-3.5.3}
+        ICEBERG_VERSION: ${ICEBERG_VERSION:-1.10.2}
+        SCALA_VERSION: ${SCALA_VERSION:-2.12}
+    image: table-bench-mark/spark:${SPARK_VERSION:-3.5.3}
+    depends_on:
+      polaris-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      <<: *s3-env
+    ports:
+      - "15002:15002"  # Spark Connect gRPC
+      - "4040:4040"    # Spark UI
+    volumes:
+      - ./staging:/staging:ro   # read seeded Parquet locally (no s3a needed for source)
+    command:
+      - /bin/bash
+      - -c
+      - >
+        /opt/spark/sbin/start-connect-server.sh
+        --conf spark.connect.grpc.binding.port=15002
+        --conf spark.connect.grpc.binding.host=0.0.0.0 &&
+        sleep 8 &&
+        tail -f /opt/spark/logs/*SparkConnectServer*.out
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/15002' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [bench]
+
+  # ────────────────────────────── Benchmark runner ───────────────────────────
+  bench-runner:
+    build:
+      context: ./benchmark
+    image: table-bench-mark/runner:latest
+    depends_on:
+      starrocks:
+        condition: service_healthy
+      spark:
+        condition: service_healthy
+    environment:
+      <<: *s3-env
+      # endpoints
+      SPARK_CONNECT_URL: sc://spark:15002
+      SR_FE_HOST: starrocks
+      SR_QUERY_PORT: "9030"
+      SR_HTTP_PORT: "8030"
+      SR_USER: ${SR_USER:-root}
+      SR_PASSWORD: ${SR_PASSWORD:-}
+      # StarRocks image version -> becomes the `query_engine` label in results.
+      STARROCKS_VERSION: ${STARROCKS_VERSION:-unknown}
+      BENCH_QUERY_ENGINE: ${BENCH_QUERY_ENGINE:-}
+      POLARIS_URI: http://polaris:8181
+      POLARIS_CATALOG_NAME: ${POLARIS_CATALOG_NAME:-polaris_catalog}
+      POLARIS_CLIENT_ID: ${POLARIS_CLIENT_ID:-root}
+      POLARIS_CLIENT_SECRET: ${POLARIS_CLIENT_SECRET:-s3cr3t}
+      POLARIS_PRINCIPAL_ROLE: ${POLARIS_PRINCIPAL_ROLE:-PRINCIPAL_ROLE:ALL}
+      WAREHOUSE_BUCKET: ${WAREHOUSE_BUCKET:-warehouse}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+      # benchmark params (override config/benchmark.yaml)
+      BENCH_SEED: ${BENCH_SEED:-42}
+      BENCH_ROUNDS: ${BENCH_ROUNDS:-10}
+      BENCH_ROWS_PER_ROUND: ${BENCH_ROWS_PER_ROUND:-100000}
+      BENCH_INITIAL_ROWS: ${BENCH_INITIAL_ROWS:-100000}
+      BENCH_UPDATE_RATIO: ${BENCH_UPDATE_RATIO:-0.20}
+    volumes:
+      - ./benchmark:/app
+      - ./staging:/staging
+      - ./results:/results
+    working_dir: /app
+    # Keep alive so `scripts/run.sh` can exec subcommands (gen/smoke/bench/report).
+    command: ["sleep", "infinity"]
+    networks: [bench]
+
+volumes:
+  minio-data:
+  postgres-data:
+  starrocks-data:
+
+networks:
+  bench:
+    driver: bridge

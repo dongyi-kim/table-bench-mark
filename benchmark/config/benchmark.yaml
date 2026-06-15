@@ -1,0 +1,49 @@
+# Global benchmark parameters. Env vars (BENCH_*) override these at runtime.
+
+seed: 42                  # master RNG seed -> fully deterministic staging data
+
+# Schema: 100 columns total. pk_id and round_id are drawn from the integer budget.
+schema:
+  double_cols: 80
+  int_cols: 10            # includes pk_id + round_id
+  char_cols: 10
+  char_len: 16
+  pk_column: pk_id
+  round_column: round_id
+
+# Workload (upsert/mutation mix).
+workload:
+  initial_rows: 100000    # round 0 seed
+  rows_per_round: 100000  # per round upsert volume
+  rounds: 10              # rounds 1..10
+  update_ratio: 0.20      # fraction of each round that updates existing PKs
+  query_recent_rounds: 2  # query the last N rounds
+  query_repeats: 3        # repeat the measured query to get p50/p95
+
+# Compaction cadence modes tested per scenario (Spark rewrite_data_files):
+#   none         -> never compact (deletes/DVs accumulate)
+#   every_round  -> compact after every write round
+#   every_2_rounds -> compact every other round (rounds 2,4,6,8,10)
+compaction_modes:
+  - none
+  - every_round
+  - every_2_rounds
+
+# Read engines that query each per-round table state. StarRocks label carries its
+# version; spark is the writer engine reading back its own tables (sees v3 deletion vectors).
+read_engines:
+  - starrocks
+  - spark
+
+# Smoke test overrides (scripts/run.sh smoke) — tiny + fast.
+smoke:
+  initial_rows: 2000
+  rows_per_round: 2000
+  rounds: 2
+  query_repeats: 2
+
+# Object storage / warehouse (resolved from env in config.py).
+warehouse:
+  bucket: warehouse
+  iceberg_prefix: iceberg
+  paimon_prefix: paimon

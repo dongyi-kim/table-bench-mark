@@ -1,0 +1,13 @@
+name: iceberg-v2-mor
+adapter: iceberg_spark
+write_engine: spark
+table_format: iceberg
+mode: mor
+catalog: polaris
+iceberg_format_version: 2
+table_properties:
+  write.delete.mode: merge-on-read
+  write.update.mode: merge-on-read
+  write.merge.mode: merge-on-read
+capabilities:
+  upsert: true
