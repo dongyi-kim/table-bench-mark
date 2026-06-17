@@ -27,14 +27,35 @@ if [ -z "${SR_VERSIONS:-}" ] && [ -f .env ]; then
 fi
 SR_VERSIONS="${SR_VERSIONS:-3.5.5 4.1.1}"
 
-wait_starrocks_healthy() {
-  echo "[run] StarRocks 헬스 대기..."
-  local cid
-  until cid="$($COMPOSE ps -q starrocks 2>/dev/null)"; [ -n "$cid" ] && \
-        [ "$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null)" = "healthy" ]; do
-    sleep 5
+_wait_healthy() {  # $1 = service name, $2 = timeout secs (default 300) -> returns 1 on timeout
+  local svc="$1" timeout="${2:-300}" waited=0 cid
+  while :; do
+    cid="$($COMPOSE ps -q "$svc" 2>/dev/null)"
+    [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null)" = "healthy" ] && return 0
+    [ "$waited" -ge "$timeout" ] && { echo "[run]   WARN: $svc 가 ${timeout}s 내 healthy 안 됨"; return 1; }
+    sleep 5; waited=$((waited+5))
   done
-  echo "[run] StarRocks healthy."
+}
+
+# Per-combo isolation. Spark is recreated every combo (fresh JVM clears accumulated driver
+# memory — the main cause of mid-run instability). StarRocks is only recreated when it has
+# actually gone unhealthy (its force-recreate + FE recovery is slow), otherwise left running.
+_is_healthy() {  # $1 = service
+  local cid; cid="$($COMPOSE ps -q "$1" 2>/dev/null)"
+  [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null)" = "healthy" ]
+}
+restart_engines() {
+  local ver="$1"
+  # Spark-only run: StarRocks excluded. Fresh Spark JVM per combo clears accumulated driver
+  # memory. Retry startup so a failed launch never hangs the whole matrix.
+  local attempt
+  for attempt in 1 2 3; do
+    $COMPOSE up -d --force-recreate --no-deps spark >/dev/null 2>&1
+    echo "[run]   Spark 재시작(시도 $attempt) → healthy 대기..."
+    if _wait_healthy spark 240; then echo "[run]   Spark healthy."; return 0; fi
+  done
+  echo "[run]   WARN: Spark 기동 반복 실패 — 이 조합은 실패로 기록될 수 있음"
+  return 0
 }
 
 cmd_up() {
@@ -49,28 +70,36 @@ cmd_up() {
 cmd_gen()    { $COMPOSE exec -T "$RUNNER" python -m bench gen "$@"; }
 cmd_report() { $COMPOSE exec -T "$RUNNER" python -m bench report "$@"; }
 
-# Run `smoke`/`bench` once per StarRocks version, swapping the container, accumulating
-# into a single results dir, then build one merged report.
+# Run `smoke`/`bench` over the full matrix. Data is generated ONCE; then each
+# (StarRocks version × scenario × compaction mode) combo runs after a fresh engine restart
+# (isolation), accumulating into one results dir, then a single merged report.
 _run_matrix() {
   local mode="$1"; shift
-  local ts resdir first=1
+  local ts resdir
   ts="$(date +%Y%m%d-%H%M%S)"
   resdir="/results/${mode}-${ts}"
-  echo "[run] ${mode}: StarRocks 버전 순회 = ${SR_VERSIONS}  -> ${resdir}"
+
+  # scenarios from candidate YAMLs; compaction modes from benchmark.yaml.
+  local cands modes
+  cands="$(ls benchmark/config/candidates/*.yaml | sed 's#.*/##; s#\.yaml$##')"
+  modes="$(awk '/^compaction_modes:/{f=1;next} f&&/^[[:space:]]*-[[:space:]]/{print $2} f&&/^[^[:space:]-]/{f=0}' benchmark/config/benchmark.yaml)"
+
+  echo "[run] ${mode} -> ${resdir}"
+  echo "[run] 시드 데이터 생성(측정 제외)..."
+  local genargs=""; [ "$mode" = "smoke" ] && genargs="--smoke"
+  $COMPOSE exec -T "$RUNNER" python -m bench gen $genargs
+
   for ver in $SR_VERSIONS; do
-    echo "============================================================"
-    echo "[run] StarRocks ${ver} 로 교체/기동 (+ Spark 재시작으로 토큰 리프레시)"
-    # Restart BOTH engines fresh per version so Polaris OAuth tokens stay valid for the
-    # whole (~25min) run — long-lived sessions otherwise expire mid-run.
-    STARROCKS_VERSION="$ver" $COMPOSE up -d --force-recreate --no-deps starrocks
-    $COMPOSE up -d --force-recreate --no-deps spark
-    wait_starrocks_healthy
-    until [ "$(docker inspect -f '{{.State.Health.Status}}' "$($COMPOSE ps -q spark)" 2>/dev/null)" = "healthy" ]; do sleep 5; done
-    echo "[run] Spark healthy."
-    local genflag="--skip-gen"; [ "$first" = "1" ] && genflag=""
-    $COMPOSE exec -T "$RUNNER" python -m bench "$mode" \
-      --query-engine "starrocks-${ver}" --results-dir "$resdir" --no-report $genflag "$@"
-    first=0
+    for cand in $cands; do
+      for comp in $modes; do
+        echo "============================================================"
+        echo "[run] ${cand} / ${comp} / starrocks-${ver}"
+        restart_engines "$ver"
+        $COMPOSE exec -T "$RUNNER" python -m bench "$mode" \
+          --candidate "$cand" --compaction "$comp" \
+          --query-engine "starrocks-${ver}" --results-dir "$resdir" --no-report --skip-gen "$@"
+      done
+    done
   done
   echo "[run] 리포트 생성..."
   $COMPOSE exec -T "$RUNNER" python -m bench report --results-dir "$resdir"

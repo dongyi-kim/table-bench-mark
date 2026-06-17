@@ -2,11 +2,13 @@
 
 seed: 42                  # master RNG seed -> fully deterministic staging data
 
-# Schema: 100 columns total. pk_id and round_id are drawn from the integer budget.
+# Schema: 30 columns total (was 100; reduced to keep COW data movement tractable for
+# 50 rounds on a single machine). Original 80/10/10 ratio preserved at 24/3/3.
+# pk_id and round_id are drawn from the integer budget.
 schema:
-  double_cols: 80
-  int_cols: 10            # includes pk_id + round_id
-  char_cols: 10
+  double_cols: 24
+  int_cols: 3             # includes pk_id + round_id (+1 generic)
+  char_cols: 3
   char_len: 16
   pk_column: pk_id
   round_column: round_id
@@ -15,31 +17,43 @@ schema:
 workload:
   initial_rows: 100000    # round 0 seed
   rows_per_round: 100000  # per round upsert volume
-  rounds: 10              # rounds 1..10
+  rounds: 50              # rounds 1..50
   update_ratio: 0.20      # fraction of each round that updates existing PKs
   query_recent_rounds: 2  # query the last N rounds
-  query_repeats: 3        # repeat the measured query to get p50/p95
+  query_repeats: 10       # repeat the measured read to get a stable p50/p95 average
 
 # Compaction cadence modes tested per scenario (Spark rewrite_data_files):
-#   none         -> never compact (deletes/DVs accumulate)
-#   every_round  -> compact after every write round
-#   every_2_rounds -> compact every other round (rounds 2,4,6,8,10)
+#   none            -> never compact (deletes/DVs accumulate)
+#   every_10_rounds -> compact at rounds 10,20,30,40,50
+#   every_round     -> compact after every write round
 compaction_modes:
   - none
+  - every_10_rounds
   - every_round
-  - every_2_rounds
 
 # Read engines that query each per-round table state. StarRocks label carries its
 # version; spark is the writer engine reading back its own tables (sees v3 deletion vectors).
 read_engines:
-  - starrocks
   - spark
 
-# Smoke test overrides (scripts/run.sh smoke) — tiny + fast.
+# Iceberg table defaults applied to every scenario (candidate props can override).
+iceberg_table_defaults:
+  write.parquet.compression-codec: zstd
+  write.metadata.compression-codec: gzip
+  history.expire.min-snapshots-to-keep: "1"   # keep at most 1 snapshot on expire
+  history.expire.max-snapshot-age-ms: "1"
+
+# write->read freshness probe (poll until the just-written round is visible).
+freshness:
+  timeout_s: 8
+  poll_s: 0.2
+
+# Smoke test overrides (scripts/run.sh smoke) — small + fast, but 10 rounds so all
+# three compaction cadences trigger at least once.
 smoke:
-  initial_rows: 2000
-  rows_per_round: 2000
-  rounds: 2
+  initial_rows: 1000
+  rows_per_round: 1000
+  rounds: 10
   query_repeats: 2
 
 # Object storage / warehouse (resolved from env in config.py).

@@ -102,6 +102,9 @@ class BenchConfig:
     query_engine: str        # StarRocks version label, e.g. "starrocks-4.1.1"
     compaction_modes: list[str]
     read_engines: list[str]
+    iceberg_table_defaults: dict
+    freshness_timeout_s: float
+    freshness_poll_s: float
     candidates: dict[str, Candidate]
 
     # ---- convenience ----------------------------------------------------------
@@ -216,5 +219,8 @@ def load_config(config_dir: Path = CONFIG_DIR) -> BenchConfig:
         query_engine=query_engine,
         compaction_modes=list(bench.get("compaction_modes", ["none"])),
         read_engines=list(bench.get("read_engines", ["starrocks"])),
+        iceberg_table_defaults=dict(bench.get("iceberg_table_defaults", {})),
+        freshness_timeout_s=float(bench.get("freshness", {}).get("timeout_s", 8)),
+        freshness_poll_s=float(bench.get("freshness", {}).get("poll_s", 0.2)),
         candidates=candidates,
     )

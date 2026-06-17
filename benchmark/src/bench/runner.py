@@ -9,6 +9,8 @@ This single pass covers both "sessions":
 """
 from __future__ import annotations
 
+import time
+
 from . import datagen
 from .adapters import AdapterContext, UnsupportedOperation, get_adapter
 from .config import BenchConfig, Candidate
@@ -29,8 +31,8 @@ def _recent_round_ids(r: int, k: int) -> list[int]:
 def _compaction_due(mode: str, r: int) -> bool:
     if mode == "every_round":
         return r >= 1
-    if mode == "every_2_rounds":
-        return r >= 1 and r % 2 == 0
+    if mode == "every_10_rounds":
+        return r >= 1 and r % 10 == 0
     return False  # none
 
 
@@ -88,7 +90,10 @@ class Runner:
                     continue
                 if _compaction_due(mode, r):
                     self._do_compact(adapter, candidate, mode, r)
+                    self._do_maintain(adapter, candidate, mode, r)
                 for label, kind in self.read_engines:
+                    # write->read freshness probe first (visibility lag), then steady-state query
+                    self._do_freshness(adapter, candidate, mode, r, label, kind, expected.get(r))
                     self._do_query(adapter, candidate, mode, r, label, kind, expected.get(r))
         finally:
             self._safe_cleanup(adapter)
@@ -113,6 +118,41 @@ class Runner:
             self._rec(candidate, mode, WRITER, r, "compact", OK, t[0], extra=summary)
         except Exception as e:  # noqa: BLE001
             self._rec(candidate, mode, WRITER, r, "compact", FAILED, error=str(e))
+
+    def _do_maintain(self, adapter, candidate, mode, r) -> None:
+        try:
+            with timed() as t:
+                summary = adapter.maintain()
+            self._rec(candidate, mode, WRITER, r, "maintain", OK, t[0], extra=summary)
+        except Exception as e:  # noqa: BLE001
+            self._rec(candidate, mode, WRITER, r, "maintain", FAILED, error=str(e))
+
+    def _do_freshness(self, adapter, candidate, mode, r, label, kind, expected_rows) -> None:
+        """Write->read visibility: time from commit until the engine returns the expected
+        recent-row count. Engine errors (e.g. v3 deletion-vector unreadable) are recorded
+        immediately as failed (visibility N/A) — no polling."""
+        ids = _recent_round_ids(r, self.cfg.workload.query_recent_rounds)
+        t0 = time.perf_counter()
+        deadline = t0 + self.cfg.freshness_timeout_s
+        while True:
+            try:
+                adapter.before_query(kind)
+                rows = adapter.run_query(ids, kind)
+            except UnsupportedOperation as e:
+                self._rec(candidate, mode, label, r, "freshness", UNSUPPORTED, error=str(e)); return
+            except Exception as e:  # noqa: BLE001 - engine cannot read this table state
+                self._rec(candidate, mode, label, r, "freshness", FAILED, error=str(e)); return
+            if expected_rows is None or rows == expected_rows:
+                self._rec(candidate, mode, label, r, "freshness", OK,
+                          time.perf_counter() - t0, rows)
+                return
+            if time.perf_counter() >= deadline:
+                self._rec(candidate, mode, label, r, "freshness", FAILED,
+                          time.perf_counter() - t0, rows,
+                          error=f"not visible in {self.cfg.freshness_timeout_s}s "
+                                f"(rows={rows}, expected={expected_rows})")
+                return
+            time.sleep(self.cfg.freshness_poll_s)
 
     def _do_query(self, adapter, candidate, mode, r, label, kind, expected_rows) -> None:
         ids = _recent_round_ids(r, self.cfg.workload.query_recent_rounds)

@@ -101,7 +101,7 @@ def generate(cfg: BenchConfig, local_dir: Path = Path("/staging"),
         table = _build_table(cols, pk, round_id, rng, char_len, schema)
         fname = f"round_{round_id:02d}.parquet"
         lpath = local_dir / fname
-        pq.write_table(table, lpath)
+        pq.write_table(table, lpath, compression="zstd")
         meta = {
             "round": round_id,
             "file": fname,
@@ -113,7 +113,7 @@ def generate(cfg: BenchConfig, local_dir: Path = Path("/staging"),
         if s3 is not None:
             dest = f"{cfg.warehouse.bucket}/{cfg.warehouse.staging_prefix}/{fname}"
             with s3.open_output_stream(dest) as out:
-                pq.write_table(table, out)
+                pq.write_table(table, out, compression="zstd")
             meta["s3"] = cfg.staging_s3_uri(fname)
         return meta
 

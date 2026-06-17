@@ -41,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("wait")
     g = sub.add_parser("gen")
     g.add_argument("--no-upload", action="store_true", help="local only, skip MinIO upload")
+    g.add_argument("--smoke", action="store_true", help="generate smoke-sized data")
 
     for name in ("smoke", "bench"):
         p = sub.add_parser(name)
@@ -62,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "gen":
+        if args.smoke:
+            cfg = cfg.with_smoke()
         m = datagen.generate(cfg, STAGING, upload=not args.no_upload)
         print(f"generated {len(m['rounds'])} rounds into {STAGING} "
               f"(seed={m['seed']}, cols={m['schema']['total_columns']})")

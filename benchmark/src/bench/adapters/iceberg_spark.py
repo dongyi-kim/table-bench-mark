@@ -8,10 +8,32 @@ only way StarRocks can read an Iceberg v3 MOR table.
 """
 from __future__ import annotations
 
+import time
+
 from .. import schema as S
 from .base import Adapter, register
 
 CATALOG = "ice"  # name in BOTH Spark (spark-defaults) and the StarRocks read catalog
+
+# Polaris occasionally returns transient 403/503 under load; retry these.
+_TRANSIENT = ("forbidden", "serviceunavailable", "service unavailable",
+              "503", "unable to fetch", "connection reset", "timed out")
+
+
+def _is_transient(e: Exception) -> bool:
+    m = str(e).lower()
+    return any(t in m for t in _TRANSIENT)
+
+
+def _retry(fn, attempts: int = 5, delay: float = 4.0):
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001
+            if i < attempts - 1 and _is_transient(e):
+                time.sleep(delay)
+                continue
+            raise
 
 
 @register("iceberg_spark")
@@ -23,26 +45,36 @@ class IcebergSparkAdapter(Adapter):
         return f"`{CATALOG}`.`{self.ctx.db}`.`{self.table}`"
 
     def prepare(self) -> None:
-        self.ctx.sr.ensure_iceberg_catalog(CATALOG)   # StarRocks read-side catalog
+        # StarRocks read-side catalog only needed if StarRocks is a read engine.
+        if "starrocks" in self.cfg.read_engines:
+            self.ctx.sr.ensure_iceberg_catalog(CATALOG)
         sp = self.ctx.spark
-        sp.sql(f"CREATE NAMESPACE IF NOT EXISTS {CATALOG}.`{self.ctx.db}`")
-        sp.sql(f"DROP TABLE IF EXISTS {self._fqtn_spark()}")
-        sp.sql(S.spark_iceberg_ddl(
-            self._fqtn_spark(), self.cols, self.cfg.schema.char_len,
-            self.candidate.iceberg_format_version, self.candidate.table_properties))
+        # global defaults (e.g. zstd) merged under candidate props (candidate can override)
+        props = {**self.cfg.iceberg_table_defaults, **self.candidate.table_properties}
+
+        def _create():
+            sp.sql(f"CREATE NAMESPACE IF NOT EXISTS {CATALOG}.`{self.ctx.db}`")
+            sp.sql(f"DROP TABLE IF EXISTS {self._fqtn_spark()}")
+            sp.sql(S.spark_iceberg_ddl(
+                self._fqtn_spark(), self.cols, self.cfg.schema.char_len,
+                self.candidate.iceberg_format_version, props))
+        _retry(_create)
 
     def load_round(self, round_idx: int, s3_uri: str) -> int:
         sp = self.ctx.spark
         local = f"file:///staging/round_{round_idx:02d}.parquet"
-        sp.sql(f"CREATE OR REPLACE TEMPORARY VIEW src AS SELECT * FROM parquet.`{local}`")
         cols = ", ".join(f"`{c.name}`" for c in self.cols)
         fqtn = self._fqtn_spark()
-        if round_idx == 0 or not self.supports_upsert():
-            sp.sql(f"INSERT INTO {fqtn} ({cols}) SELECT {cols} FROM src")
-        else:
-            sp.sql(
-                f"MERGE INTO {fqtn} t USING src s ON t.`{self.pk_col}` = s.`{self.pk_col}` "
-                f"WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *")
+
+        def _load():
+            sp.sql(f"CREATE OR REPLACE TEMPORARY VIEW src AS SELECT * FROM parquet.`{local}`")
+            if round_idx == 0 or not self.supports_upsert():
+                sp.sql(f"INSERT INTO {fqtn} ({cols}) SELECT {cols} FROM src")
+            else:
+                sp.sql(
+                    f"MERGE INTO {fqtn} t USING src s ON t.`{self.pk_col}` = s.`{self.pk_col}` "
+                    f"WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *")
+        _retry(_load)
         return int(sp.scalar(f"SELECT count(*) FROM {fqtn}") or 0)
 
     def compact(self) -> dict:
@@ -60,6 +92,37 @@ class IcebergSparkAdapter(Adapter):
                     "added_data_files": r.get("added_data_files_count")}
         return {}
 
+    def maintain(self) -> dict:
+        """Keep only the latest snapshot and delete orphan files. Run after each compaction;
+        timed separately from the rewrite. Bounds storage (snapshots/orphans otherwise grow).
+
+        CALL args must be literals (current_timestamp() doesn't parse), so we read Spark's
+        current time and pass a TIMESTAMP literal slightly in the future so all just-written
+        snapshots/files qualify."""
+        from datetime import timedelta
+        tbl = f"{self.ctx.db}.{self.table}"
+        sp = self.ctx.spark.session()
+        now = sp.sql("SELECT current_timestamp() AS t").collect()[0][0]
+        ts = (now + timedelta(seconds=2)).strftime("%Y-%m-%d %H:%M:%S")
+        out = {}
+        try:
+            exp = sp.sql(
+                f"CALL {CATALOG}.system.expire_snapshots("
+                f"table => '{tbl}', older_than => TIMESTAMP '{ts}', retain_last => 1)").collect()
+            if exp:
+                d = exp[0].asDict()
+                out["deleted_data_files"] = d.get("deleted_data_files_count")
+        except Exception as e:  # noqa: BLE001
+            out["expire_err"] = str(e)[:140]
+        try:
+            orp = sp.sql(
+                f"CALL {CATALOG}.system.remove_orphan_files("
+                f"table => '{tbl}', older_than => TIMESTAMP '{ts}')").collect()
+            out["orphans_removed"] = len(orp)
+        except Exception as e:  # noqa: BLE001
+            out["orphan_err"] = str(e)[:140]
+        return out
+
     def before_query(self, engine: str) -> None:
         if engine == "starrocks":
             self.ctx.sr.refresh_iceberg(CATALOG, self.ctx.db, self.table)
@@ -75,7 +138,12 @@ class IcebergSparkAdapter(Adapter):
         return int(val or 0)
 
     def cleanup(self) -> None:
+        # PURGE deletes the data/metadata files from S3 too — without it every combo's
+        # table files leak into MinIO and accumulate across the matrix (disk blow-up).
         try:
-            self.ctx.spark.sql(f"DROP TABLE IF EXISTS {self._fqtn_spark()}")
+            self.ctx.spark.sql(f"DROP TABLE IF EXISTS {self._fqtn_spark()} PURGE")
         except Exception:  # noqa: BLE001
-            pass
+            try:
+                self.ctx.spark.sql(f"DROP TABLE IF EXISTS {self._fqtn_spark()}")
+            except Exception:  # noqa: BLE001
+                pass

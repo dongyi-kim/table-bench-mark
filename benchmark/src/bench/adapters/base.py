@@ -79,6 +79,10 @@ class Adapter:
         """Run compaction (e.g. Spark rewrite_data_files); return a small summary. Timed."""
         return {}
 
+    def maintain(self) -> dict:
+        """Snapshot/orphan maintenance (expire to 1 + remove orphans); summary. Timed separately."""
+        return {}
+
     def before_query(self, engine: str) -> None:
         """Optional hook to refresh metadata so reads never see stale cache."""
 

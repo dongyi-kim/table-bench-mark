@@ -27,10 +27,14 @@ services:
   minio:
     image: minio/minio:${MINIO_VERSION:-RELEASE.2025-04-08T15-41-24Z}
     command: server /data --console-address ":9001"
+    mem_limit: 2g   # cap MinIO cache so Spark's 6g driver has room (14GB total)
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
       MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      # Enable virtual-host bucket routing on domain "minio" so Polaris's ambient S3 client
+      # (which uses virtual-host style -> warehouse.minio) works alongside path-style clients.
+      MINIO_DOMAIN: minio
     ports:
       - "9000:9000"   # S3 API
       - "9001:9001"   # console
@@ -41,7 +45,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-    networks: [bench]
+    networks:
+      bench:
+        aliases:
+          - warehouse.minio   # DNS for virtual-host addressing (<bucket>.<domain>)
 
   minio-init:
     image: minio/mc:latest
@@ -118,6 +125,14 @@ services:
       POLARIS_FEATURES_ENABLE_INSECURE: "true"
       # Extend OAuth token lifetime (default ~PT1H caused mid-run expiry on long benches).
       POLARIS_AUTHENTICATION_TOKEN_BROKER_MAX_TOKEN_GENERATION: PT24H
+      # Disable credential vending (MinIO has no STS). Polaris then uses ambient AWS_* creds;
+      # we also force the S3 endpoint + path-style so its FileIO reaches MinIO (not AWS).
+      POLARIS_FEATURES_SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION: "true"
+      AWS_ENDPOINT_URL_S3: ${MINIO_ENDPOINT:-http://minio:9000}
+      JAVA_OPTS_APPEND: >-
+        -Dpolaris.features.SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION=true
+        -Daws.endpointUrlS3=${MINIO_ENDPOINT:-http://minio:9000}
+        -Daws.endpointUrl=${MINIO_ENDPOINT:-http://minio:9000}
     ports:
       - "8181:8181"   # catalog + management API
       - "8182:8182"   # health/metrics
@@ -193,12 +208,13 @@ services:
     command:
       - /bin/bash
       - -c
+      # Start the Connect server (daemonizes), then keep the container alive unconditionally
+      # so a force-recreate is reliable; health is decided by the gRPC port healthcheck.
       - >
         /opt/spark/sbin/start-connect-server.sh
         --conf spark.connect.grpc.binding.port=15002
-        --conf spark.connect.grpc.binding.host=0.0.0.0 &&
-        sleep 8 &&
-        tail -f /opt/spark/logs/*SparkConnectServer*.out
+        --conf spark.connect.grpc.binding.host=0.0.0.0 || true;
+        exec tail -f /dev/null
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/15002' 2>/dev/null || exit 1"]
       interval: 10s
@@ -213,8 +229,6 @@ services:
       context: ./benchmark
     image: table-bench-mark/runner:latest
     depends_on:
-      starrocks:
-        condition: service_healthy
       spark:
         condition: service_healthy
     environment:
