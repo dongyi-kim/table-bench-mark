@@ -137,6 +137,33 @@ class IcebergSparkAdapter(Adapter):
                 f"SELECT count(*) FROM {self._fqtn_spark()} WHERE `{self.round_col}` IN ({ids})")
         return int(val or 0)
 
+    def is_round_visible(self, latest_round: int, engine: str) -> bool:
+        """Existence probe (LIMIT 1) — far cheaper than COUNT(*), so the freshness timer
+        measures write->read visibility lag rather than full read-execution cost."""
+        if engine == "starrocks":
+            val = self.ctx.sr.scalar(
+                f"SELECT 1 FROM {self._fqtn_sr()} WHERE `{self.round_col}` = {latest_round} LIMIT 1")
+        else:  # spark
+            val = self.ctx.spark.scalar(
+                f"SELECT 1 FROM {self._fqtn_spark()} WHERE `{self.round_col}` = {latest_round} LIMIT 1")
+        return val is not None
+
+    def snapshot_summary(self) -> dict:
+        """Latest snapshot's summary map (added-records / added-files-size / added-data-files,
+        etc.) from the Iceberg `.snapshots` metadata table. Used to quantify write
+        amplification (e.g. v3 row-lineage per-row overhead). Not timed; best-effort."""
+        try:
+            row = self.ctx.spark.session().sql(
+                f"SELECT summary FROM {self._fqtn_spark()}.snapshots "
+                f"ORDER BY committed_at DESC LIMIT 1").collect()
+            s = dict(row[0][0]) if row and row[0][0] else {}
+            keys = ("operation", "added-records", "added-files-size", "added-data-files",
+                    "removed-files-size", "removed-data-files", "total-records",
+                    "total-files-size", "total-data-files")
+            return {k: s[k] for k in keys if k in s}
+        except Exception:  # noqa: BLE001
+            return {}
+
     def cleanup(self) -> None:
         # PURGE deletes the data/metadata files from S3 too — without it every combo's
         # table files leak into MinIO and accumulate across the matrix (disk blow-up).

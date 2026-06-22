@@ -6,6 +6,7 @@ commands:
   smoke     tiny end-to-end run for every Iceberg scenario (sanity)
   bench     full benchmark run for the current StarRocks query engine
   report    build the Markdown comparison report from a results dir
+  aggregate average N run dirs into one (per combo/round/phase) + report
 
 The StarRocks version is swapped by scripts/run.sh, which calls `bench`/`smoke` once per
 version with a shared --results-dir so both versions accumulate into one report.
@@ -55,6 +56,12 @@ def main(argv: list[str] | None = None) -> int:
     rp = sub.add_parser("report")
     rp.add_argument("--results-dir", help="defaults to latest")
 
+    ag = sub.add_parser("aggregate")
+    ag.add_argument("--run-dirs", nargs="+", required=True,
+                    help="result dirs to average (same workload/config)")
+    ag.add_argument("--output-dir", required=True, help="averaged results dir to create")
+    ag.add_argument("--no-report", action="store_true", help="skip report generation")
+
     args = ap.parse_args(argv)
     cfg = load_config()
 
@@ -95,6 +102,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "report":
         rd = Path(args.results_dir) if args.results_dir else _latest_results()
         build_report(rd)
+        return 0
+
+    if args.cmd == "aggregate":
+        from .aggregator import aggregate_results
+        out = Path(args.output_dir)
+        aggregate_results([Path(d) for d in args.run_dirs], out)
+        if not args.no_report:
+            build_report(out)
+        else:
+            print(f"aggregated results in {out}")
         return 0
 
     return 1

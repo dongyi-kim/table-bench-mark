@@ -92,6 +92,10 @@ class Runner:
                     self._do_compact(adapter, candidate, mode, r)
                     self._do_maintain(adapter, candidate, mode, r)
                 for label, kind in self.read_engines:
+                    # Skip engines a candidate can't be read by (e.g. StarRocks cannot read
+                    # Iceberg v3-MOR deletion vectors): capabilities `{kind}_read: false`.
+                    if not candidate.capabilities.get(f"{kind}_read", True):
+                        continue
                     # write->read freshness probe first (visibility lag), then steady-state query
                     self._do_freshness(adapter, candidate, mode, r, label, kind, expected.get(r))
                     self._do_query(adapter, candidate, mode, r, label, kind, expected.get(r))
@@ -99,12 +103,21 @@ class Runner:
             self._safe_cleanup(adapter)
 
     # ---- steps ----------------------------------------------------------------
+    def _quiesce(self) -> None:
+        """Idle settle before a measured timer (called OUTSIDE timed()). Lets the prior
+        step's residual IO/commit/GC drain here instead of bleeding into the measurement
+        window — the main defense against one-off latency spikes. settle_s=0 is a no-op."""
+        if self.cfg.settle_s > 0:
+            time.sleep(self.cfg.settle_s)
+
     def _do_load(self, adapter, candidate, mode, r) -> bool:
         s3_uri = self.cfg.staging_s3_uri(f"round_{r:02d}.parquet")
         try:
+            self._quiesce()
             with timed() as t:
                 rows = adapter.load_round(r, s3_uri)
-            self._rec(candidate, mode, WRITER, r, "load", OK, t[0], rows)
+            self._rec(candidate, mode, WRITER, r, "load", OK, t[0], rows,
+                      extra=adapter.snapshot_summary())  # write-amplification metrics (untimed)
             return True
         except UnsupportedOperation as e:
             self._rec(candidate, mode, WRITER, r, "load", UNSUPPORTED, error=str(e)); return False
@@ -113,14 +126,17 @@ class Runner:
 
     def _do_compact(self, adapter, candidate, mode, r) -> None:
         try:
+            self._quiesce()
             with timed() as t:
                 summary = adapter.compact()
-            self._rec(candidate, mode, WRITER, r, "compact", OK, t[0], extra=summary)
+            self._rec(candidate, mode, WRITER, r, "compact", OK, t[0],
+                      extra={**summary, **adapter.snapshot_summary()})
         except Exception as e:  # noqa: BLE001
             self._rec(candidate, mode, WRITER, r, "compact", FAILED, error=str(e))
 
     def _do_maintain(self, adapter, candidate, mode, r) -> None:
         try:
+            self._quiesce()
             with timed() as t:
                 summary = adapter.maintain()
             self._rec(candidate, mode, WRITER, r, "maintain", OK, t[0], extra=summary)
@@ -128,29 +144,29 @@ class Runner:
             self._rec(candidate, mode, WRITER, r, "maintain", FAILED, error=str(e))
 
     def _do_freshness(self, adapter, candidate, mode, r, label, kind, expected_rows) -> None:
-        """Write->read visibility: time from commit until the engine returns the expected
-        recent-row count. Engine errors (e.g. v3 deletion-vector unreadable) are recorded
-        immediately as failed (visibility N/A) — no polling."""
-        ids = _recent_round_ids(r, self.cfg.workload.query_recent_rounds)
+        """Write->read visibility lag: time from commit until the just-written round `r`
+        becomes readable. Uses a lightweight existence probe (is_round_visible, LIMIT 1) so the
+        metric isolates visibility lag from full read-execution cost (the steady-state read is
+        measured separately by _do_query). Engine errors (e.g. v3 deletion-vector unreadable)
+        are recorded immediately as failed (visibility N/A)."""
+        self._quiesce()
         t0 = time.perf_counter()
         deadline = t0 + self.cfg.freshness_timeout_s
         while True:
             try:
                 adapter.before_query(kind)
-                rows = adapter.run_query(ids, kind)
+                visible = adapter.is_round_visible(r, kind)
             except UnsupportedOperation as e:
                 self._rec(candidate, mode, label, r, "freshness", UNSUPPORTED, error=str(e)); return
             except Exception as e:  # noqa: BLE001 - engine cannot read this table state
                 self._rec(candidate, mode, label, r, "freshness", FAILED, error=str(e)); return
-            if expected_rows is None or rows == expected_rows:
-                self._rec(candidate, mode, label, r, "freshness", OK,
-                          time.perf_counter() - t0, rows)
+            if visible:
+                self._rec(candidate, mode, label, r, "freshness", OK, time.perf_counter() - t0)
                 return
             if time.perf_counter() >= deadline:
                 self._rec(candidate, mode, label, r, "freshness", FAILED,
-                          time.perf_counter() - t0, rows,
-                          error=f"not visible in {self.cfg.freshness_timeout_s}s "
-                                f"(rows={rows}, expected={expected_rows})")
+                          time.perf_counter() - t0,
+                          error=f"round {r} not visible in {self.cfg.freshness_timeout_s}s")
                 return
             time.sleep(self.cfg.freshness_poll_s)
 
@@ -159,6 +175,7 @@ class Runner:
         durations: list[float] = []
         rows = 0
         try:
+            self._quiesce()
             for _ in range(self.cfg.workload.query_repeats):
                 adapter.before_query(kind)
                 with timed() as t:

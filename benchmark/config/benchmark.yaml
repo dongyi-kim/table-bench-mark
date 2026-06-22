@@ -31,10 +31,14 @@ compaction_modes:
   - every_10_rounds
   - every_round
 
-# Read engines that query each per-round table state. StarRocks label carries its
-# version; spark is the writer engine reading back its own tables (sees v3 deletion vectors).
+# Read engines that query each per-round table state. StarRocks label carries its version;
+# spark is the writer reading back its own tables (sees v3 deletion vectors).
+# IMPORTANT: measure ONE engine per run, then merge runs with `bench aggregate`. Running two
+# engines in one run contaminates freshness — the 2nd engine reads an already-warmed/settled
+# snapshot (the 1st engine's queries + REFRESH primed Polaris/MinIO), so its write->read lag
+# looks better than reality. Writes are deterministic (seed) so per-engine runs are comparable.
 read_engines:
-  - spark
+  - starrocks
 
 # Iceberg table defaults applied to every scenario (candidate props can override).
 iceberg_table_defaults:
@@ -44,9 +48,19 @@ iceberg_table_defaults:
   history.expire.max-snapshot-age-ms: "1"
 
 # write->read freshness probe (poll until the just-written round is visible).
+# Lightweight visibility probe (existence of the newest round_id, LIMIT 1) — NOT a full
+# COUNT(*) — so the metric isolates write->read visibility lag from read-execution cost.
+# Fine poll_s minimizes poll-quantization error on the (rare) cases that need a 2nd poll.
 freshness:
   timeout_s: 8
-  poll_s: 0.2
+  poll_s: 0.05
+
+# Measurement quiescence. settle_s is an idle wait inserted just BEFORE each measured step's
+# timer (always OUTSIDE it) so the prior step's residual IO/commit/GC drains into this gap
+# instead of contaminating the next measurement window. Applied uniformly to every candidate
+# (fairness preserved). Override with BENCH_SETTLE_S; 0 reproduces the old behavior exactly.
+measurement:
+  settle_s: 1.0
 
 # Smoke test overrides (scripts/run.sh smoke) — small + fast, but 10 rounds so all
 # three compaction cadences trigger at least once.

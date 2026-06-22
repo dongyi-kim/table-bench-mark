@@ -27,7 +27,11 @@ services:
   minio:
     image: minio/minio:${MINIO_VERSION:-RELEASE.2025-04-08T15-41-24Z}
     command: server /data --console-address ":9001"
-    mem_limit: 2g   # cap MinIO cache so Spark's 6g driver has room (14GB total)
+    # Resource caps keep any one service from ballooning and pushing the Docker VM into swap
+    # (a prime cause of one-off latency spikes). Sum of *_MEM must stay <= the Docker VM's
+    # memory (see .env). Tune per host/VM there; do NOT hardcode here.
+    mem_limit: ${MINIO_MEM:-2g}
+    cpus: ${MINIO_CPUS:-2}
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
@@ -68,6 +72,8 @@ services:
   # ────────────────────────────── Postgres (Polaris metadata) ───────────────
   postgres:
     image: postgres:${POSTGRES_VERSION:-16}
+    mem_limit: ${POSTGRES_MEM:-1g}
+    cpus: ${POSTGRES_CPUS:-1}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-polaris}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-polaris}
@@ -103,6 +109,8 @@ services:
   # ────────────────────────────── Polaris (Iceberg REST catalog) ────────────
   polaris:
     image: apache/polaris:${POLARIS_VERSION:-1.5.0}
+    mem_limit: ${POLARIS_MEM:-1500m}
+    cpus: ${POLARIS_CPUS:-2}
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,6 +175,8 @@ services:
   # ────────────────────────────── StarRocks (query engine / Session A writer) ─
   starrocks:
     image: starrocks/allin1-ubuntu:${STARROCKS_VERSION:-3.5.5}
+    mem_limit: ${STARROCKS_MEM:-6g}
+    cpus: ${STARROCKS_CPUS:-6}
     depends_on:
       polaris-bootstrap:
         condition: service_completed_successfully
@@ -195,6 +205,9 @@ services:
         ICEBERG_VERSION: ${ICEBERG_VERSION:-1.10.2}
         SCALA_VERSION: ${SCALA_VERSION:-2.12}
     image: table-bench-mark/spark:${SPARK_VERSION:-3.5.3}
+    # Spark driver heap is 6g (spark-defaults.conf); cap leaves room for off-heap/Arrow/PySpark.
+    mem_limit: ${SPARK_MEM:-8g}
+    cpus: ${SPARK_CPUS:-6}
     depends_on:
       polaris-bootstrap:
         condition: service_completed_successfully
@@ -228,6 +241,8 @@ services:
     build:
       context: ./benchmark
     image: table-bench-mark/runner:latest
+    mem_limit: ${RUNNER_MEM:-1g}
+    cpus: ${RUNNER_CPUS:-2}
     depends_on:
       spark:
         condition: service_healthy

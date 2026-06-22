@@ -11,3 +11,6 @@ table_properties:
   write.merge.mode: merge-on-read
 capabilities:
   upsert: true
+  # StarRocks 3.5/4.1 cannot read Iceberg v3 MOR deletion vectors ("Parquet file magic not
+  # matched") — exclude it from StarRocks reads (runner skips this engine for this candidate).
+  starrocks_read: false

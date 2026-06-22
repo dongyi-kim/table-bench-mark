@@ -105,6 +105,7 @@ class BenchConfig:
     iceberg_table_defaults: dict
     freshness_timeout_s: float
     freshness_poll_s: float
+    settle_s: float          # idle wait before each measured step's timer (quiescence)
     candidates: dict[str, Candidate]
 
     # ---- convenience ----------------------------------------------------------
@@ -222,5 +223,6 @@ def load_config(config_dir: Path = CONFIG_DIR) -> BenchConfig:
         iceberg_table_defaults=dict(bench.get("iceberg_table_defaults", {})),
         freshness_timeout_s=float(bench.get("freshness", {}).get("timeout_s", 8)),
         freshness_poll_s=float(bench.get("freshness", {}).get("poll_s", 0.2)),
+        settle_s=float(_env("BENCH_SETTLE_S", bench.get("measurement", {}).get("settle_s", 1.0))),
         candidates=candidates,
     )

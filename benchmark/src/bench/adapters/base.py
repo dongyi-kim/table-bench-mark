@@ -90,5 +90,17 @@ class Adapter:
         """Run the 'last N rounds' query on the given read engine; return row count. Timed."""
         raise NotImplementedError
 
+    def is_round_visible(self, latest_round: int, engine: str) -> bool:
+        """Lightweight write->read visibility probe: is the just-written `latest_round`
+        readable yet? Used by the freshness timer — keep it cheap (e.g. existence LIMIT 1)
+        so the metric measures visibility lag, not full read-execution cost. Default falls
+        back to run_query (a heavier COUNT); subclasses should override with a LIMIT 1 probe."""
+        return self.run_query([latest_round], engine) > 0
+
+    def snapshot_summary(self) -> dict:
+        """Latest commit's write metrics (added rows/bytes/files) for write-amplification
+        analysis. Read AFTER the timer (not timed). Default: none."""
+        return {}
+
     def cleanup(self) -> None:
         """Drop the table so the next candidate starts fresh."""
