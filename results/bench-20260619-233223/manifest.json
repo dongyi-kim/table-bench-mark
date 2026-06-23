@@ -1,0 +1,753 @@
+{
+  "seed": 42,
+  "schema": {
+    "double_cols": 24,
+    "int_cols": 3,
+    "char_cols": 3,
+    "char_len": 16,
+    "total_columns": 30
+  },
+  "workload": {
+    "initial_rows": 100000,
+    "rows_per_round": 100000,
+    "rounds": 50,
+    "update_ratio": 0.2,
+    "query_recent_rounds": 2
+  },
+  "rounds": [
+    {
+      "round": 0,
+      "file": "round_00.parquet",
+      "rows": 100000,
+      "sha256": "fb47f20bbf379edb917fe8dd12ed084d97996326068ee8c71f207ae4a18f11f3",
+      "pk_min": 0,
+      "pk_max": 99999,
+      "s3": "s3://warehouse/staging/round_00.parquet",
+      "new": 100000,
+      "updates": 0,
+      "expected_recent": null
+    },
+    {
+      "round": 1,
+      "file": "round_01.parquet",
+      "rows": 100000,
+      "sha256": "c510211a44d334e885850b798a43605e9e4ed26c744cf3775538fac5a6798545",
+      "pk_min": 0,
+      "pk_max": 179999,
+      "s3": "s3://warehouse/staging/round_01.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 180000
+    },
+    {
+      "round": 2,
+      "file": "round_02.parquet",
+      "rows": 100000,
+      "sha256": "c21d3a618e912d4d4a0aec6ce9945a7b2841599161a7c2ff694f774c8e1ad0af",
+      "pk_min": 0,
+      "pk_max": 259999,
+      "s3": "s3://warehouse/staging/round_02.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 188903
+    },
+    {
+      "round": 3,
+      "file": "round_03.parquet",
+      "rows": 100000,
+      "sha256": "88175c450db98f83a401e84861674b5d4fc4cea650136a78e305181a54eb8fbf",
+      "pk_min": 5,
+      "pk_max": 339999,
+      "s3": "s3://warehouse/staging/round_03.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 192166
+    },
+    {
+      "round": 4,
+      "file": "round_04.parquet",
+      "rows": 100000,
+      "sha256": "214f5398eb43f58fd2ff4796358e1cdf350c2ba9f4e3a44954e7324b0582ceee",
+      "pk_min": 15,
+      "pk_max": 419999,
+      "s3": "s3://warehouse/staging/round_04.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 194111
+    },
+    {
+      "round": 5,
+      "file": "round_05.parquet",
+      "rows": 100000,
+      "sha256": "9a6cffa82e63822eeae8a241c86f18f930c98b5fb14626f80537e63c6c3cf694",
+      "pk_min": 9,
+      "pk_max": 499999,
+      "s3": "s3://warehouse/staging/round_05.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 195222
+    },
+    {
+      "round": 6,
+      "file": "round_06.parquet",
+      "rows": 100000,
+      "sha256": "42f4a21d801b92c98a7884bae4e55cf0a1256350910561a628ac5cfa91fb480b",
+      "pk_min": 19,
+      "pk_max": 579999,
+      "s3": "s3://warehouse/staging/round_06.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 195971
+    },
+    {
+      "round": 7,
+      "file": "round_07.parquet",
+      "rows": 100000,
+      "sha256": "52aee67fc07a8c29fa7fe55154b1eaa6b5ce94471b5f59ade54d4827cabc8c92",
+      "pk_min": 6,
+      "pk_max": 659999,
+      "s3": "s3://warehouse/staging/round_07.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 196567
+    },
+    {
+      "round": 8,
+      "file": "round_08.parquet",
+      "rows": 100000,
+      "sha256": "861b0f806fd56ca4cf54ea68fe1b5fcca92e88a52d4ee147ad7ec768a8464089",
+      "pk_min": 117,
+      "pk_max": 739999,
+      "s3": "s3://warehouse/staging/round_08.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 197004
+    },
+    {
+      "round": 9,
+      "file": "round_09.parquet",
+      "rows": 100000,
+      "sha256": "81e1331e0a6212064a4abb541ed1b3b1ba8ea3163d2d469fd3c76dad4efd2742",
+      "pk_min": 19,
+      "pk_max": 819999,
+      "s3": "s3://warehouse/staging/round_09.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 197268
+    },
+    {
+      "round": 10,
+      "file": "round_10.parquet",
+      "rows": 100000,
+      "sha256": "9372c8521da62408b6dfa22110d07ed7993d7429c89a040c290de2025e1dc53e",
+      "pk_min": 36,
+      "pk_max": 899999,
+      "s3": "s3://warehouse/staging/round_10.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 197555
+    },
+    {
+      "round": 11,
+      "file": "round_11.parquet",
+      "rows": 100000,
+      "sha256": "0ec43dcac8a97bdaa3eb9fb9feeabed09b035ea0fd4b48d8896785e0ad4288ab",
+      "pk_min": 50,
+      "pk_max": 979999,
+      "s3": "s3://warehouse/staging/round_11.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 197805
+    },
+    {
+      "round": 12,
+      "file": "round_12.parquet",
+      "rows": 100000,
+      "sha256": "609d7d2ad5779e0983b0982bd6b2bbe3ee96680da22200c0dad43c272a2917b5",
+      "pk_min": 15,
+      "pk_max": 1059999,
+      "s3": "s3://warehouse/staging/round_12.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 197942
+    },
+    {
+      "round": 13,
+      "file": "round_13.parquet",
+      "rows": 100000,
+      "sha256": "317e8de1f989be649f765d35f6a794bd7a3ea0f28e1bc806b7cd6e281f3ca94c",
+      "pk_min": 14,
+      "pk_max": 1139999,
+      "s3": "s3://warehouse/staging/round_13.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198137
+    },
+    {
+      "round": 14,
+      "file": "round_14.parquet",
+      "rows": 100000,
+      "sha256": "b2c081325adfc717365a9803fc252ac4a06f6861bb0adde3f1f6e1a5caa75bfe",
+      "pk_min": 1,
+      "pk_max": 1219999,
+      "s3": "s3://warehouse/staging/round_14.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198284
+    },
+    {
+      "round": 15,
+      "file": "round_15.parquet",
+      "rows": 100000,
+      "sha256": "0125f2bbb9b79908e702ab2571cf4fe2380711e5054e306907517c1447de13bd",
+      "pk_min": 99,
+      "pk_max": 1299999,
+      "s3": "s3://warehouse/staging/round_15.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198336
+    },
+    {
+      "round": 16,
+      "file": "round_16.parquet",
+      "rows": 100000,
+      "sha256": "c1c016437f10f6921e93dc3e4cd0fa2ce08df34cba2ebde0b2867fbc0bf3b867",
+      "pk_min": 36,
+      "pk_max": 1379999,
+      "s3": "s3://warehouse/staging/round_16.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198432
+    },
+    {
+      "round": 17,
+      "file": "round_17.parquet",
+      "rows": 100000,
+      "sha256": "54f21f5df798e949ae358dcd318529458e765fb476af25338235761da5d63c34",
+      "pk_min": 20,
+      "pk_max": 1459999,
+      "s3": "s3://warehouse/staging/round_17.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198537
+    },
+    {
+      "round": 18,
+      "file": "round_18.parquet",
+      "rows": 100000,
+      "sha256": "9aa8eb236cc1116ace65d46a3cb77859dbb8444acf26499c690a78c00a33ca64",
+      "pk_min": 47,
+      "pk_max": 1539999,
+      "s3": "s3://warehouse/staging/round_18.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198537
+    },
+    {
+      "round": 19,
+      "file": "round_19.parquet",
+      "rows": 100000,
+      "sha256": "eb6bcefbab55c27e1063e9af7d32fbb1ff5503fe4a1a86566a82ca4c35349925",
+      "pk_min": 56,
+      "pk_max": 1619999,
+      "s3": "s3://warehouse/staging/round_19.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198696
+    },
+    {
+      "round": 20,
+      "file": "round_20.parquet",
+      "rows": 100000,
+      "sha256": "90dca94741fc9488d72908c5d8bf227564e687d134296be4cb512bb8155c9ae2",
+      "pk_min": 30,
+      "pk_max": 1699999,
+      "s3": "s3://warehouse/staging/round_20.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198715
+    },
+    {
+      "round": 21,
+      "file": "round_21.parquet",
+      "rows": 100000,
+      "sha256": "0d5a33a764d29e9e4f8b87aca5977e307de59158429b1e94d6addb9b5fa44097",
+      "pk_min": 82,
+      "pk_max": 1779999,
+      "s3": "s3://warehouse/staging/round_21.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198787
+    },
+    {
+      "round": 22,
+      "file": "round_22.parquet",
+      "rows": 100000,
+      "sha256": "fc7ef9a3032ff36b03a7bbbf910a9cba5fa7db3e19b052d750de71715c13f9ae",
+      "pk_min": 42,
+      "pk_max": 1859999,
+      "s3": "s3://warehouse/staging/round_22.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198894
+    },
+    {
+      "round": 23,
+      "file": "round_23.parquet",
+      "rows": 100000,
+      "sha256": "caee0d8561f237ff362a3d69defe20ea61d0aab01ba6194b4967a6ef754d0f48",
+      "pk_min": 75,
+      "pk_max": 1939999,
+      "s3": "s3://warehouse/staging/round_23.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198898
+    },
+    {
+      "round": 24,
+      "file": "round_24.parquet",
+      "rows": 100000,
+      "sha256": "e3718790a2c634391b1b44b6740b4cf99c93199e880d514fd9bb1c6f859fd5ec",
+      "pk_min": 76,
+      "pk_max": 2019999,
+      "s3": "s3://warehouse/staging/round_24.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198949
+    },
+    {
+      "round": 25,
+      "file": "round_25.parquet",
+      "rows": 100000,
+      "sha256": "3daa799ef37790e226b18fe09a015949ea88830fd6f7fff8aa61e14428db7808",
+      "pk_min": 254,
+      "pk_max": 2099999,
+      "s3": "s3://warehouse/staging/round_25.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 198988
+    },
+    {
+      "round": 26,
+      "file": "round_26.parquet",
+      "rows": 100000,
+      "sha256": "b16bb51095121e5b2228a62eaa2d9081079eebb8106045b4d0344419df5a9b7e",
+      "pk_min": 388,
+      "pk_max": 2179999,
+      "s3": "s3://warehouse/staging/round_26.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199046
+    },
+    {
+      "round": 27,
+      "file": "round_27.parquet",
+      "rows": 100000,
+      "sha256": "93cefc144cfe92af2804831bde570750c41505f3e14a2f287d05e62a569b96ad",
+      "pk_min": 473,
+      "pk_max": 2259999,
+      "s3": "s3://warehouse/staging/round_27.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199074
+    },
+    {
+      "round": 28,
+      "file": "round_28.parquet",
+      "rows": 100000,
+      "sha256": "04090ec997f62537ab05a0af2c9e833e7c03a4e80c8d75ae3c51d3e035215810",
+      "pk_min": 60,
+      "pk_max": 2339999,
+      "s3": "s3://warehouse/staging/round_28.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199067
+    },
+    {
+      "round": 29,
+      "file": "round_29.parquet",
+      "rows": 100000,
+      "sha256": "892e1e256275266e1e38bb018495b34ec057cebfea53cb56eda4700726c99916",
+      "pk_min": 28,
+      "pk_max": 2419999,
+      "s3": "s3://warehouse/staging/round_29.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199154
+    },
+    {
+      "round": 30,
+      "file": "round_30.parquet",
+      "rows": 100000,
+      "sha256": "0fdbb9f7f318fa2c2ef2424c0b1b25d6151da23ff55065b656f02ad21a7a3d5e",
+      "pk_min": 636,
+      "pk_max": 2499999,
+      "s3": "s3://warehouse/staging/round_30.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199140
+    },
+    {
+      "round": 31,
+      "file": "round_31.parquet",
+      "rows": 100000,
+      "sha256": "77d259695e7abf9a143f952a8e3416325e4c789a1780bfe00d4d15fc452e8003",
+      "pk_min": 148,
+      "pk_max": 2579999,
+      "s3": "s3://warehouse/staging/round_31.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199162
+    },
+    {
+      "round": 32,
+      "file": "round_32.parquet",
+      "rows": 100000,
+      "sha256": "0a020808aab76c668f5b4ce3a32d2abe9cbf7dc18ca190860aff9dc58b391b36",
+      "pk_min": 46,
+      "pk_max": 2659999,
+      "s3": "s3://warehouse/staging/round_32.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199223
+    },
+    {
+      "round": 33,
+      "file": "round_33.parquet",
+      "rows": 100000,
+      "sha256": "cb79d250c31bfa89db0863b55c44e0c0af206a1b0aeffff6dc186968eddb79a6",
+      "pk_min": 528,
+      "pk_max": 2739999,
+      "s3": "s3://warehouse/staging/round_33.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199212
+    },
+    {
+      "round": 34,
+      "file": "round_34.parquet",
+      "rows": 100000,
+      "sha256": "3743d2c26e2ddd9b3687aa57072605eceb3cf7b2a7448f9a438a2586d80aaf17",
+      "pk_min": 140,
+      "pk_max": 2819999,
+      "s3": "s3://warehouse/staging/round_34.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199294
+    },
+    {
+      "round": 35,
+      "file": "round_35.parquet",
+      "rows": 100000,
+      "sha256": "e883ab93d088fba62ab1959ced09f271b91bedccc31eece38fe6ab06dd3d61ff",
+      "pk_min": 56,
+      "pk_max": 2899999,
+      "s3": "s3://warehouse/staging/round_35.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199285
+    },
+    {
+      "round": 36,
+      "file": "round_36.parquet",
+      "rows": 100000,
+      "sha256": "3a9298b5f670e99173d52d91ab03885f0b78ff393a8d62927f28ff496ba4b00b",
+      "pk_min": 12,
+      "pk_max": 2979999,
+      "s3": "s3://warehouse/staging/round_36.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199328
+    },
+    {
+      "round": 37,
+      "file": "round_37.parquet",
+      "rows": 100000,
+      "sha256": "bee82c6b4e3303b1763412a2a66f655bcff906c6d161a5b378e413b61d0bf667",
+      "pk_min": 39,
+      "pk_max": 3059999,
+      "s3": "s3://warehouse/staging/round_37.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199337
+    },
+    {
+      "round": 38,
+      "file": "round_38.parquet",
+      "rows": 100000,
+      "sha256": "a43936a18c855ee492b791716c664d8dbe32720d4ce7397fd9f783cbbc3204ff",
+      "pk_min": 311,
+      "pk_max": 3139999,
+      "s3": "s3://warehouse/staging/round_38.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199316
+    },
+    {
+      "round": 39,
+      "file": "round_39.parquet",
+      "rows": 100000,
+      "sha256": "21e72818b5c51907bd5b5919c1a4d4680ec9f371299e54baaadd91482827da38",
+      "pk_min": 75,
+      "pk_max": 3219999,
+      "s3": "s3://warehouse/staging/round_39.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199355
+    },
+    {
+      "round": 40,
+      "file": "round_40.parquet",
+      "rows": 100000,
+      "sha256": "1b5943b6f31b4683da3a613ba23c9a1c1a5345716b9064d4b46fe9b52e66aa92",
+      "pk_min": 168,
+      "pk_max": 3299999,
+      "s3": "s3://warehouse/staging/round_40.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199381
+    },
+    {
+      "round": 41,
+      "file": "round_41.parquet",
+      "rows": 100000,
+      "sha256": "82452316168ace672a0d9364d0e9d5adbb3124cbf528d035b0e5719204ae7d71",
+      "pk_min": 235,
+      "pk_max": 3379999,
+      "s3": "s3://warehouse/staging/round_41.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199446
+    },
+    {
+      "round": 42,
+      "file": "round_42.parquet",
+      "rows": 100000,
+      "sha256": "4ac7859a2791bf95047d011559cf7f834fd5c201b78a4ac29573465b38971740",
+      "pk_min": 701,
+      "pk_max": 3459999,
+      "s3": "s3://warehouse/staging/round_42.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199363
+    },
+    {
+      "round": 43,
+      "file": "round_43.parquet",
+      "rows": 100000,
+      "sha256": "5802edc460fffaba8ff9e7daed1a9145af359ef589aa777f56c171f6b4aa2a77",
+      "pk_min": 164,
+      "pk_max": 3539999,
+      "s3": "s3://warehouse/staging/round_43.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199472
+    },
+    {
+      "round": 44,
+      "file": "round_44.parquet",
+      "rows": 100000,
+      "sha256": "3af790414f1e3ab203ef38240557ea2d0deebb4e13123755ddb640b562c014d7",
+      "pk_min": 29,
+      "pk_max": 3619999,
+      "s3": "s3://warehouse/staging/round_44.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199440
+    },
+    {
+      "round": 45,
+      "file": "round_45.parquet",
+      "rows": 100000,
+      "sha256": "55c56a391f6d02a2ce71fc9ed616e35610c30d9b7833f7e165b4dcfdfe34f1c6",
+      "pk_min": 298,
+      "pk_max": 3699999,
+      "s3": "s3://warehouse/staging/round_45.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199469
+    },
+    {
+      "round": 46,
+      "file": "round_46.parquet",
+      "rows": 100000,
+      "sha256": "7355850ce89a00f73861d88cc2d62886c1de2824bfae73d4977f92a518566d3e",
+      "pk_min": 35,
+      "pk_max": 3779999,
+      "s3": "s3://warehouse/staging/round_46.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199451
+    },
+    {
+      "round": 47,
+      "file": "round_47.parquet",
+      "rows": 100000,
+      "sha256": "1fa7bf1a054f405a13a9df3cb19bdb508929fa17984ffa09ac87ec250ed1ae3f",
+      "pk_min": 32,
+      "pk_max": 3859999,
+      "s3": "s3://warehouse/staging/round_47.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199470
+    },
+    {
+      "round": 48,
+      "file": "round_48.parquet",
+      "rows": 100000,
+      "sha256": "f374cc44bee2ffb9cfc460aed52fb3d9c17d12c65856d0e842a3d92bd7203393",
+      "pk_min": 14,
+      "pk_max": 3939999,
+      "s3": "s3://warehouse/staging/round_48.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199489
+    },
+    {
+      "round": 49,
+      "file": "round_49.parquet",
+      "rows": 100000,
+      "sha256": "3e7f1ce710a23a486144ec3580f7d557535227f0fb5ae82631d9c24cbeb21ca3",
+      "pk_min": 154,
+      "pk_max": 4019999,
+      "s3": "s3://warehouse/staging/round_49.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199511
+    },
+    {
+      "round": 50,
+      "file": "round_50.parquet",
+      "rows": 100000,
+      "sha256": "6f6fa9a614352540e991f428be4920da68eb0cd5910f151219b33cfbb6921852",
+      "pk_min": 40,
+      "pk_max": 4099999,
+      "s3": "s3://warehouse/staging/round_50.parquet",
+      "new": 80000,
+      "updates": 20000,
+      "expected_recent": 199469
+    }
+  ],
+  "columns": [
+    {
+      "name": "pk_id",
+      "kind": "bigint"
+    },
+    {
+      "name": "round_id",
+      "kind": "int"
+    },
+    {
+      "name": "i2",
+      "kind": "int"
+    },
+    {
+      "name": "d0",
+      "kind": "double"
+    },
+    {
+      "name": "d1",
+      "kind": "double"
+    },
+    {
+      "name": "d2",
+      "kind": "double"
+    },
+    {
+      "name": "d3",
+      "kind": "double"
+    },
+    {
+      "name": "d4",
+      "kind": "double"
+    },
+    {
+      "name": "d5",
+      "kind": "double"
+    },
+    {
+      "name": "d6",
+      "kind": "double"
+    },
+    {
+      "name": "d7",
+      "kind": "double"
+    },
+    {
+      "name": "d8",
+      "kind": "double"
+    },
+    {
+      "name": "d9",
+      "kind": "double"
+    },
+    {
+      "name": "d10",
+      "kind": "double"
+    },
+    {
+      "name": "d11",
+      "kind": "double"
+    },
+    {
+      "name": "d12",
+      "kind": "double"
+    },
+    {
+      "name": "d13",
+      "kind": "double"
+    },
+    {
+      "name": "d14",
+      "kind": "double"
+    },
+    {
+      "name": "d15",
+      "kind": "double"
+    },
+    {
+      "name": "d16",
+      "kind": "double"
+    },
+    {
+      "name": "d17",
+      "kind": "double"
+    },
+    {
+      "name": "d18",
+      "kind": "double"
+    },
+    {
+      "name": "d19",
+      "kind": "double"
+    },
+    {
+      "name": "d20",
+      "kind": "double"
+    },
+    {
+      "name": "d21",
+      "kind": "double"
+    },
+    {
+      "name": "d22",
+      "kind": "double"
+    },
+    {
+      "name": "d23",
+      "kind": "double"
+    },
+    {
+      "name": "c0",
+      "kind": "char"
+    },
+    {
+      "name": "c1",
+      "kind": "char"
+    },
+    {
+      "name": "c2",
+      "kind": "char"
+    }
+  ]
+}

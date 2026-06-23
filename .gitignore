@@ -1,8 +1,12 @@
 # Benchmark artifacts
 /staging/*
 !/staging/.gitkeep
-/results/*
-!/results/.gitkeep
+# results/ is committed so the measured data + reports + graphs are shareable.
+# Only transient/scratch runs are ignored (smoke, snapshot tests, agg scratch).
+/results/smoke-*
+/results/_*
+/results/*-agg2
+/results/*-merge-test
 
 # Python
 __pycache__/
