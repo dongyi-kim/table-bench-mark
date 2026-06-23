@@ -6,6 +6,9 @@
 쓰기가 빈번하고 **적재→조회 지연(load-to-query latency)** 이 중요한 워크로드에서,
 어떤 Iceberg 구성이 가장 좋은지 **재현 가능한 수치**로 답하기 위해 만들었습니다.
 
+> 📌 **결론 보고서**: 실험 결과 기반 포맷·compaction 전략 권장 → **[docs/recommendation.md](docs/recommendation.md)**
+> (요약: MOR + 주기적 compaction; 조회 Spark면 `v3-MOR`, StarRocks 4.1이면 `v2-MOR`).
+
 ---
 
 ## 🎯 무엇을 비교하나
