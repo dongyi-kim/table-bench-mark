@@ -351,6 +351,15 @@ def build_report(results_dir: Path) -> Path:
                    for e in read_engines] for s in scenarios for m in modes],
         headers=headers, tablefmt="github")
 
+    def _lf_avg(s, m, e):  # load + freshness (compaction excluded)
+        lo, fr = _avg(s, m, "load"), _avg(s, m, "freshness", e)
+        return (lo + fr) if (lo is not None and fr is not None) else None
+
+    loadfresh_md = tabulate(
+        [[s, m] + [f"{_lf_avg(s, m, e):.3f}" if _lf_avg(s, m, e) is not None else "—"
+                   for e in read_engines] for s in scenarios for m in modes],
+        headers=headers, tablefmt="github")
+
     imgs, imgs_bymethod = _graphs(rows, results_dir, scenarios, modes, read_engines)
 
     # ---- per-scenario commentary ---------------------------------------------
@@ -423,6 +432,9 @@ def build_report(results_dir: Path) -> Path:
         "> 쓰기→조회가능까지의 end-to-end 지연 proxy. 세 값은 서로 겹치지 않는 별개 구간(중복 없음). "
         "compaction은 라운드 전체에 분산(총비용÷라운드)해 라운드당 평균으로 환산. maintain 제외.\n\n"
         + combined_md
+        + "\n\n### 4-2. 적재→가시성 지연 (적재 + freshness, compaction 제외) — 엔진별\n\n"
+        "> compaction을 **백그라운드(임계경로 밖)** 로 가정한 적재→조회가능 지연. = load + freshness.\n\n"
+        + loadfresh_md
         + "\n\n## 5. compaction 정책별 방식 비교 (각 정책 하에서 v2/v3 × COW/MOR)\n\n"
         "> CV(변동계수)는 라운드 간 변동성. freshness 는 단일 콜드 측정이라 CV 가 query 보다 큼(정상).\n\n"
         + bycomp_md
@@ -476,6 +488,15 @@ def _combined_series(rows, scen, mode, phase, engine=None):
     fresh = _phase_map(rows, scen, mode, "freshness", engine)
     xs = sorted(set(load) & set(fresh))
     return xs, [load[r] + comp.get(r, 0.0) + fresh[r] for r in xs]
+
+
+def _combined_lf_series(rows, scen, mode, phase, engine=None):
+    """write->queryable latency EXCLUDING compaction = load + freshness (compaction assumed
+    to run in the background, off the critical path). `phase` ignored."""
+    load = _phase_map(rows, scen, mode, "load", None)
+    fresh = _phase_map(rows, scen, mode, "freshness", engine)
+    xs = sorted(set(load) & set(fresh))
+    return xs, [load[r] + fresh[r] for r in xs]
 
 
 def _grid(scenarios):
@@ -572,4 +593,16 @@ def _graphs(rows, results_dir, scenarios, modes, read_engines):
                                f"{ctitle} (패널=방식 · 선=compaction)", True, series_fn=_combined_series)
     if cbm:
         imgs_bymethod.append(cbm)
+    # load + freshness only (compaction excluded; assumed background, off critical path).
+    ltitle = "적재→가시성 지연(적재+freshness, compaction 제외) vs 라운드"
+    limg = _grid_plot(rows, results_dir, scenarios, modes, read_engines, "combined_lf",
+                      "load+fresh (s)", "fig_loadfresh.png",
+                      f"{ltitle} (패널=compaction · 선=방식)", True, series_fn=_combined_lf_series)
+    if limg:
+        imgs.append(limg)
+    lbm = _grid_plot_by_method(rows, results_dir, scenarios, modes, read_engines, "combined_lf",
+                               "load+fresh (s)", "fig_loadfresh_bymethod.png",
+                               f"{ltitle} (패널=방식 · 선=compaction)", True, series_fn=_combined_lf_series)
+    if lbm:
+        imgs_bymethod.append(lbm)
     return imgs, imgs_bymethod

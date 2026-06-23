@@ -104,6 +104,25 @@
 | iceberg-v3-mor | every_10_rounds |   2.887 |
 | iceberg-v3-mor | every_round     |   9.573 |
 
+### 4-2. 적재→가시성 지연 (적재 + freshness, compaction 제외) — 엔진별
+
+> compaction을 **백그라운드(임계경로 밖)** 로 가정한 적재→조회가능 지연. = load + freshness.
+
+| 시나리오           | compaction      |   spark |
+|----------------|-----------------|---------|
+| iceberg-v2-cow | none            |   6.905 |
+| iceberg-v2-cow | every_10_rounds |   6.466 |
+| iceberg-v2-cow | every_round     |   6.841 |
+| iceberg-v2-mor | none            |   3.359 |
+| iceberg-v2-mor | every_10_rounds |   2.266 |
+| iceberg-v2-mor | every_round     |   2.271 |
+| iceberg-v3-cow | none            |   6.919 |
+| iceberg-v3-cow | every_10_rounds |   6.788 |
+| iceberg-v3-cow | every_round     |   8.701 |
+| iceberg-v3-mor | none            |   2.233 |
+| iceberg-v3-mor | every_10_rounds |   2.086 |
+| iceberg-v3-mor | every_round     |   2.417 |
+
 ## 5. compaction 정책별 방식 비교 (각 정책 하에서 v2/v3 × COW/MOR)
 
 > CV(변동계수)는 라운드 간 변동성. freshness 는 단일 콜드 측정이라 CV 가 query 보다 큼(정상).
@@ -213,6 +232,10 @@
 
 ![통합 지연(적재+compaction+freshness) vs 라운드 (패널=compaction · 선=방식)](fig_combined.png)
 
+#### 적재→가시성 지연(적재+freshness, compaction 제외) vs 라운드 (패널=compaction · 선=방식)
+
+![적재→가시성 지연(적재+freshness, compaction 제외) vs 라운드 (패널=compaction · 선=방식)](fig_loadfresh.png)
+
 ### 9b. 패널=방식 · 선=compaction (각 방식에서 compaction 주기 비교)
 
 #### 적재 시간 vs 라운드 (패널=방식 · 선=compaction)
@@ -238,6 +261,10 @@
 #### 통합 지연(적재+compaction+freshness) vs 라운드 (패널=방식 · 선=compaction)
 
 ![통합 지연(적재+compaction+freshness) vs 라운드 (패널=방식 · 선=compaction)](fig_combined_bymethod.png)
+
+#### 적재→가시성 지연(적재+freshness, compaction 제외) vs 라운드 (패널=방식 · 선=compaction)
+
+![적재→가시성 지연(적재+freshness, compaction 제외) vs 라운드 (패널=방식 · 선=compaction)](fig_loadfresh_bymethod.png)
 
 ## 10. 시나리오별 해설
 
