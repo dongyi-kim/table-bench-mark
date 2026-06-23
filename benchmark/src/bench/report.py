@@ -448,10 +448,7 @@ def _grid(scenarios):
     n = len(scenarios)
     cols = 2 if n > 1 else 1
     rows_ = (n + cols - 1) // cols
-    # sharey=True -> all panels in one figure use the same y-scale so the panels are
-    # visually comparable (e.g. COW panels are obviously taller than MOR panels).
-    fig, axes = plt.subplots(rows_, cols, figsize=(6.4 * cols, 3.6 * rows_),
-                             squeeze=False, sharey=True)
+    fig, axes = plt.subplots(rows_, cols, figsize=(6.4 * cols, 3.6 * rows_), squeeze=False)
     return fig, axes, cols
 
 
