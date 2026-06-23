@@ -85,6 +85,25 @@
 | iceberg-v3-mor | every_10_rounds |      1.937 | 8.184              |               40.9 | 1.379            |              6.9 |
 | iceberg-v3-mor | every_round     |      1.906 | 7.420              |              371   | 0.790            |             39.5 |
 
+### 4-1. 통합 지연 (적재 + compaction + freshness, 초) — 엔진별
+
+> 쓰기→조회가능까지의 end-to-end 지연 proxy. 세 값은 서로 겹치지 않는 별개 구간(중복 없음). compaction은 라운드 전체에 분산(총비용÷라운드)해 라운드당 평균으로 환산. maintain 제외.
+
+| 시나리오           | compaction      | starrocks-4.1.1   |
+|----------------|-----------------|-------------------|
+| iceberg-v2-cow | none            | 6.859             |
+| iceberg-v2-cow | every_10_rounds | 7.262             |
+| iceberg-v2-cow | every_round     | 13.300            |
+| iceberg-v2-mor | none            | 3.456             |
+| iceberg-v2-mor | every_10_rounds | 3.173             |
+| iceberg-v2-mor | every_round     | 8.912             |
+| iceberg-v3-cow | none            | 7.743             |
+| iceberg-v3-cow | every_10_rounds | 7.313             |
+| iceberg-v3-cow | every_round     | 16.883            |
+| iceberg-v3-mor | none            | —                 |
+| iceberg-v3-mor | every_10_rounds | —                 |
+| iceberg-v3-mor | every_round     | —                 |
+
 ## 5. compaction 정책별 방식 비교 (각 정책 하에서 v2/v3 × COW/MOR)
 
 > CV(변동계수)는 라운드 간 변동성. freshness 는 단일 콜드 측정이라 CV 가 query 보다 큼(정상).
@@ -190,6 +209,10 @@
 
 ![스냅샷 expire+orphan 제거 시간 vs 라운드 (패널=compaction · 선=방식)](fig_maintain.png)
 
+#### 통합 지연(적재+compaction+freshness) vs 라운드 (패널=compaction · 선=방식)
+
+![통합 지연(적재+compaction+freshness) vs 라운드 (패널=compaction · 선=방식)](fig_combined.png)
+
 ### 9b. 패널=방식 · 선=compaction (각 방식에서 compaction 주기 비교)
 
 #### 적재 시간 vs 라운드 (패널=방식 · 선=compaction)
@@ -211,6 +234,10 @@
 #### 스냅샷 expire+orphan 제거 시간 vs 라운드 (패널=방식 · 선=compaction)
 
 ![스냅샷 expire+orphan 제거 시간 vs 라운드 (패널=방식 · 선=compaction)](fig_maintain_bymethod.png)
+
+#### 통합 지연(적재+compaction+freshness) vs 라운드 (패널=방식 · 선=compaction)
+
+![통합 지연(적재+compaction+freshness) vs 라운드 (패널=방식 · 선=compaction)](fig_combined_bymethod.png)
 
 ## 10. 시나리오별 해설
 

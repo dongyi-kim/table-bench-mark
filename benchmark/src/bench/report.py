@@ -337,6 +337,20 @@ def build_report(results_dir: Path) -> Path:
                            "선택지에서 제외해야 한다는 제약이 핵심 차이.")
         engine_md = (cmp_tbl + "\n\n" + "\n".join(notes_e))
 
+    # combined end-to-end latency table: load + (compaction amortized over all rounds) + freshness
+    def _combined_avg(s, m, e):
+        lo = _avg(s, m, "load")
+        fr = _avg(s, m, "freshness", e)
+        if lo is None or fr is None:
+            return None
+        camort = (sum(comp_ok[(s, m)]) / rounds_total) if (comp_ok.get((s, m)) and rounds_total) else 0.0
+        return lo + camort + fr
+
+    combined_md = tabulate(
+        [[s, m] + [f"{_combined_avg(s, m, e):.3f}" if _combined_avg(s, m, e) is not None else "—"
+                   for e in read_engines] for s in scenarios for m in modes],
+        headers=headers, tablefmt="github")
+
     imgs, imgs_bymethod = _graphs(rows, results_dir, scenarios, modes, read_engines)
 
     # ---- per-scenario commentary ---------------------------------------------
@@ -405,6 +419,10 @@ def build_report(results_dir: Path) -> Path:
         + "\n\n## 2. 조회 지연 (정상상태 p50 평균, 초)\n\n" + query_md
         + "\n\n## 3. 신선도 write→read (커밋→조회가능 지연 평균, 초)\n\n" + fresh_md
         + "\n\n## 4. 적재 · compaction · maintain(스냅샷 expire+orphan) 비용 (초)\n\n" + lc_md
+        + "\n\n### 4-1. 통합 지연 (적재 + compaction + freshness, 초) — 엔진별\n\n"
+        "> 쓰기→조회가능까지의 end-to-end 지연 proxy. 세 값은 서로 겹치지 않는 별개 구간(중복 없음). "
+        "compaction은 라운드 전체에 분산(총비용÷라운드)해 라운드당 평균으로 환산. maintain 제외.\n\n"
+        + combined_md
         + "\n\n## 5. compaction 정책별 방식 비교 (각 정책 하에서 v2/v3 × COW/MOR)\n\n"
         "> CV(변동계수)는 라운드 간 변동성. freshness 는 단일 콜드 측정이라 CV 가 query 보다 큼(정상).\n\n"
         + bycomp_md
@@ -444,6 +462,22 @@ def _series(rows, scen, mode, phase, engine=None):
     return xs, [pts[x] for x in xs]
 
 
+def _phase_map(rows, scen, mode, phase, engine=None):
+    xs, ys = _series(rows, scen, mode, phase, engine)
+    return dict(zip(xs, ys))
+
+
+def _combined_series(rows, scen, mode, phase, engine=None):
+    """End-to-end write->queryable latency per round = load + compaction(if any) + freshness.
+    The three are disjoint timed segments (load=write, compact=rewrite, freshness=write→visible)
+    so the sum has no double counting; maintain is excluded. `phase` is ignored."""
+    load = _phase_map(rows, scen, mode, "load", None)
+    comp = _phase_map(rows, scen, mode, "compact", None)
+    fresh = _phase_map(rows, scen, mode, "freshness", engine)
+    xs = sorted(set(load) & set(fresh))
+    return xs, [load[r] + comp.get(r, 0.0) + fresh[r] for r in xs]
+
+
 def _grid(scenarios):
     n = len(scenarios)
     cols = 2 if n > 1 else 1
@@ -456,7 +490,7 @@ def _grid(scenarios):
 
 
 def _grid_plot(rows, results_dir, scenarios, modes, read_engines, phase, ylabel,
-               fname, title, per_engine):
+               fname, title, per_engine, series_fn=_series):
     # One subplot per compaction mode; the lines within a panel compare the methods
     # (Iceberg scenarios) so each compaction cadence is a same-axes method comparison.
     fig, axes, cols = _grid(modes)
@@ -466,13 +500,13 @@ def _grid_plot(rows, results_dir, scenarios, modes, read_engines, phase, ylabel,
         if per_engine:
             for s in scenarios:
                 for e in read_engines:
-                    xs, ys = _series(rows, s, m, phase, engine=e)
+                    xs, ys = series_fn(rows, s, m, phase, engine=e)
                     if xs:
                         lbl = s if len(read_engines) == 1 else f"{s}/{e}"
                         ax.plot(xs, ys, marker=".", label=lbl); drew = True
         else:
             for s in scenarios:
-                xs, ys = _series(rows, s, m, phase)
+                xs, ys = series_fn(rows, s, m, phase)
                 if xs:
                     ax.plot(xs, ys, marker="o", label=s); drew = True
         ax.set_title(f"compaction={m}"); ax.set_xlabel("round"); ax.set_ylabel(ylabel)
@@ -482,7 +516,7 @@ def _grid_plot(rows, results_dir, scenarios, modes, read_engines, phase, ylabel,
 
 
 def _grid_plot_by_method(rows, results_dir, scenarios, modes, read_engines, phase, ylabel,
-                         fname, title, per_engine):
+                         fname, title, per_engine, series_fn=_series):
     # Reverse of _grid_plot: one subplot per method (scenario); lines = compaction policies,
     # so within each method the compaction cadences are compared on the same axes.
     fig, axes, cols = _grid(scenarios)
@@ -492,13 +526,13 @@ def _grid_plot_by_method(rows, results_dir, scenarios, modes, read_engines, phas
         if per_engine:
             for m in modes:
                 for e in read_engines:
-                    xs, ys = _series(rows, s, m, phase, engine=e)
+                    xs, ys = series_fn(rows, s, m, phase, engine=e)
                     if xs:
                         lbl = m if len(read_engines) == 1 else f"{m}/{e}"
                         ax.plot(xs, ys, marker=".", label=lbl); drew = True
         else:
             for m in modes:
-                xs, ys = _series(rows, s, m, phase)
+                xs, ys = series_fn(rows, s, m, phase)
                 if xs:
                     ax.plot(xs, ys, marker="o", label=m); drew = True
         ax.set_title(s); ax.set_xlabel("round"); ax.set_ylabel(ylabel)
@@ -526,4 +560,16 @@ def _graphs(rows, results_dir, scenarios, modes, read_engines):
                                   f"{title} (패널=방식 · 선=compaction)", per_engine)
         if bm:
             imgs_bymethod.append(bm)
+    # Combined end-to-end latency = load + compaction + freshness (engine-specific freshness).
+    ctitle = "통합 지연(적재+compaction+freshness) vs 라운드"
+    cimg = _grid_plot(rows, results_dir, scenarios, modes, read_engines, "combined",
+                      "load+compact+fresh (s)", "fig_combined.png",
+                      f"{ctitle} (패널=compaction · 선=방식)", True, series_fn=_combined_series)
+    if cimg:
+        imgs.append(cimg)
+    cbm = _grid_plot_by_method(rows, results_dir, scenarios, modes, read_engines, "combined",
+                               "load+compact+fresh (s)", "fig_combined_bymethod.png",
+                               f"{ctitle} (패널=방식 · 선=compaction)", True, series_fn=_combined_series)
+    if cbm:
+        imgs_bymethod.append(cbm)
     return imgs, imgs_bymethod

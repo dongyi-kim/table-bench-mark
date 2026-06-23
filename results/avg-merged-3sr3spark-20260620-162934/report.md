@@ -85,6 +85,25 @@
 | iceberg-v3-mor | every_10_rounds |      1.926 | 8.100              |               40.5 | 1.318            |              6.6 |
 | iceberg-v3-mor | every_round     |      2.085 | 7.288              |              364.4 | 0.794            |             39.7 |
 
+### 4-1. 통합 지연 (적재 + compaction + freshness, 초) — 엔진별
+
+> 쓰기→조회가능까지의 end-to-end 지연 proxy. 세 값은 서로 겹치지 않는 별개 구간(중복 없음). compaction은 라운드 전체에 분산(총비용÷라운드)해 라운드당 평균으로 환산. maintain 제외.
+
+| 시나리오           | compaction      |   spark | starrocks-4.1.1   |
+|----------------|-----------------|---------|-------------------|
+| iceberg-v2-cow | none            |   6.926 | 6.837             |
+| iceberg-v2-cow | every_10_rounds |   7.278 | 7.189             |
+| iceberg-v2-cow | every_round     |  13.313 | 13.264            |
+| iceberg-v2-mor | none            |   3.448 | 3.367             |
+| iceberg-v2-mor | every_10_rounds |   3.132 | 3.076             |
+| iceberg-v2-mor | every_round     |   8.932 | 8.885             |
+| iceberg-v3-cow | none            |   7.367 | 7.296             |
+| iceberg-v3-cow | every_10_rounds |   7.499 | 7.416             |
+| iceberg-v3-cow | every_round     |  16.529 | 16.478            |
+| iceberg-v3-mor | none            |   2.298 | —                 |
+| iceberg-v3-mor | every_10_rounds |   2.907 | —                 |
+| iceberg-v3-mor | every_round     |   9.526 | —                 |
+
 ## 5. compaction 정책별 방식 비교 (각 정책 하에서 v2/v3 × COW/MOR)
 
 > CV(변동계수)는 라운드 간 변동성. freshness 는 단일 콜드 측정이라 CV 가 query 보다 큼(정상).
@@ -215,6 +234,10 @@
 
 ![스냅샷 expire+orphan 제거 시간 vs 라운드 (패널=compaction · 선=방식)](fig_maintain.png)
 
+#### 통합 지연(적재+compaction+freshness) vs 라운드 (패널=compaction · 선=방식)
+
+![통합 지연(적재+compaction+freshness) vs 라운드 (패널=compaction · 선=방식)](fig_combined.png)
+
 ### 9b. 패널=방식 · 선=compaction (각 방식에서 compaction 주기 비교)
 
 #### 적재 시간 vs 라운드 (패널=방식 · 선=compaction)
@@ -236,6 +259,10 @@
 #### 스냅샷 expire+orphan 제거 시간 vs 라운드 (패널=방식 · 선=compaction)
 
 ![스냅샷 expire+orphan 제거 시간 vs 라운드 (패널=방식 · 선=compaction)](fig_maintain_bymethod.png)
+
+#### 통합 지연(적재+compaction+freshness) vs 라운드 (패널=방식 · 선=compaction)
+
+![통합 지연(적재+compaction+freshness) vs 라운드 (패널=방식 · 선=compaction)](fig_combined_bymethod.png)
 
 ## 10. 시나리오별 해설
 
